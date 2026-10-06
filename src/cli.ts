@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { capture, captureLocales } from "./capture.ts";
+import { capture, captureLocales, captureSource } from "./capture.ts";
 import {
   applyDesign,
   FRAME_VARIANTS,
@@ -11,15 +11,21 @@ import {
   type LoadedConfig,
   loadConfig,
   selectLocales,
-  VARIANT_DEVICE,
   validateLayouts,
+  variantDevices,
 } from "./config.ts";
 import * as device from "./device.ts";
 import { doctor } from "./doctor.ts";
 import { FONT_KEYS, fontStack } from "./fonts.ts";
 import { LAYOUT_KEYS, type LayoutKey, TEMPLATE_KEYS } from "./layouts.ts";
 import { writeManifest } from "./manifest.ts";
-import { renderPreview, renderScreenshots, verify } from "./render.ts";
+import {
+  renderCreatives,
+  renderPreview,
+  renderScreenshots,
+  verify,
+  verifyCreatives,
+} from "./render.ts";
 import { FlowFailure, repairBrief } from "./repair.ts";
 import { DEVICE_KEYS, type DeviceKey, isDeviceKey } from "./specs.ts";
 import { openInBrowser, serveStudio, studioPaths } from "./studio-server.ts";
@@ -31,10 +37,11 @@ goldie - App Store screenshots and previews, driven by argent
   goldie capture    Replay every scene flow and save raw captures
   goldie frame      Composite raw screenshots into framed, captioned PNGs
   goldie preview    Join the raw clips into the preview video (App Store upload; YouTube for Play)
+  goldie creative   Render the iOS 27 creative assets (product page header, search results, universal)
   goldie verify     Check finished assets against the store spec tables
   goldie manifest   Write out/store.json for the studio app
   goldie studio     Serve the studio at http://localhost:4321 (--port <n>, --no-open)
-  goldie all        capture -> frame -> preview -> manifest -> verify
+  goldie all        capture -> frame -> preview -> creative -> manifest -> verify
   goldie version    Print the installed goldie version (-v, --version)
 
 Options
@@ -81,7 +88,7 @@ async function main() {
         `Unknown frame variant "${variant}". Available: ${FRAME_VARIANTS.join(", ")}`,
       );
     }
-    frames[VARIANT_DEVICE[variant]] = variant;
+    for (const d of variantDevices(variant)) frames[d] = variant;
   });
   applyDesign(cfg, {
     background: opt("background"),
@@ -116,6 +123,11 @@ async function main() {
       for (const d of devices) for (const l of locales) await renderPreview(cfg, d, l);
       return 0;
 
+    case "creative":
+    case "creatives":
+      for (const l of locales) await renderCreatives(cfg, l);
+      return 0;
+
     case "verify":
       return (await verifyAll(cfg, devices, locales)) ? 0 : 1;
 
@@ -146,6 +158,7 @@ async function main() {
           await renderPreview(cfg, d, l);
         }
       }
+      for (const l of locales) await renderCreatives(cfg, l);
       await writeManifest(cfg);
       console.log("\nverify");
       return (await verifyAll(cfg, devices, locales)) ? 0 : 1;
@@ -166,6 +179,15 @@ function packageVersion(): string {
 
 async function runCapture(cfg: LoadedConfig, devices: DeviceKey[], locales: string[]) {
   for (const d of devices) {
+    // A device rendering another's captures (the Duo, or a captureFrom) has
+    // nothing to replay; its source's capture covers it.
+    const source = captureSource(cfg, d);
+    if (source !== d) {
+      console.log(
+        `> ${d} renders ${source}'s captures${devices.includes(source) ? "" : ` (run: goldie capture --device ${source})`}`,
+      );
+      continue;
+    }
     const udid = await device.resolveUdid(d);
     try {
       for (const locale of captureLocales(cfg, d, locales)) await capture(cfg, d, locale);
@@ -179,6 +201,7 @@ async function runCapture(cfg: LoadedConfig, devices: DeviceKey[], locales: stri
 async function verifyAll(cfg: LoadedConfig, devices: DeviceKey[], locales: string[]) {
   let ok = true;
   for (const d of devices) for (const l of locales) ok = (await verify(cfg, d, l)) && ok;
+  for (const l of locales) ok = (await verifyCreatives(cfg, l)) && ok;
   return ok;
 }
 

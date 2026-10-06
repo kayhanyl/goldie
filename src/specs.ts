@@ -1,7 +1,8 @@
 /**
  * Store asset specifications.
  * iOS: App Store Connect, developer.apple.com/help/app-store-connect/reference/
- *   screenshot-specifications | app-preview-specifications. Verified 2026-08-24.
+ *   screenshot-specifications | app-preview-specifications. Verified 2026-08-24;
+ *   iPhone 6.3" and iPhone Duo added 2026-10-06.
  * Android: Play Console help, "Add preview assets". Phone screenshots are
  *   PNG/JPEG, 16:9 or 9:16, each side 320-3840px for promotional eligibility.
  *   Play accepts no video uploads: the promo video is a YouTube link, so the
@@ -9,7 +10,13 @@
  *   themselves, with no store constraints enforced.
  */
 
-export type DeviceKey = "iphone-6.9" | "ipad-13" | "pixel-10-pro";
+export type DeviceKey =
+  | "iphone-6.9"
+  | "iphone-6.3"
+  | "iphone-duo"
+  | "iphone-duo-outer"
+  | "ipad-13"
+  | "pixel-10-pro";
 
 /**
  * The studio's device-type tabs. Finer than the platform: iPhones and iPads
@@ -58,6 +65,20 @@ export type DeviceSpec = {
    * reads small across the full tile. Default 1.
    */
   copyScale?: number;
+  /**
+   * Size devices from the reference column instead of the real tile. A tile
+   * wider than its bezel art (the iPhone on the Duo's near-4:3 tiles) would
+   * otherwise grow the device past the tile's height; the iPad's own art is
+   * wide enough not to need it.
+   */
+  columnDevices?: true;
+  /**
+   * Devices whose raw captures this one can render, in preference order. A
+   * device with no simulator (the iPhone Duo: none ships) always renders one
+   * of them; a device with a simulator renders its own unless the config's
+   * `captureFrom` points it at one of these (see captureSource in capture.ts).
+   */
+  rendersFrom?: DeviceKey[];
 };
 
 export const DEVICES: Record<DeviceKey, DeviceSpec> = {
@@ -69,6 +90,46 @@ export const DEVICES: Record<DeviceKey, DeviceSpec> = {
     native: { width: 1320, height: 2868 },
     screenshot: { width: 1320, height: 2868 },
     preview: { width: 886, height: 1920 },
+  },
+  // Dynamic Island (medium display). App Store Connect only requires it when
+  // no 6.9" set is uploaded, but a native set is sharper than the downscale.
+  // Its screen has the 6.9" aspect, so 6.9" captures render it 1:1
+  // (captureFrom) when a flow is coordinate-driven and recorded on one size.
+  "iphone-6.3": {
+    label: "6.3",
+    platform: "ios",
+    type: "iphone",
+    simulatorName: "iPhone 17 Pro",
+    native: { width: 1206, height: 2622 },
+    screenshot: { width: 1206, height: 2622 },
+    preview: { width: 886, height: 1920 },
+    rendersFrom: ["iphone-6.9"],
+  },
+  // iPhone Duo, the inner (unfolded) display. No Duo simulator ships, so it
+  // renders iPhone captures in the iPhone bezel on its own wider tile, the way
+  // the iPad tile composes. Apple publishes no Duo preview size yet.
+  "iphone-duo": {
+    label: "Duo",
+    platform: "ios",
+    type: "iphone",
+    copyScale: 1.3,
+    columnDevices: true,
+    native: null,
+    screenshot: { width: 2007, height: 2853 },
+    preview: null,
+    rendersFrom: ["iphone-6.9", "iphone-6.3"],
+  },
+  /** iPhone Duo, the outer (folded) display. */
+  "iphone-duo-outer": {
+    label: "Duo outer",
+    platform: "ios",
+    type: "iphone",
+    copyScale: 1.3,
+    columnDevices: true,
+    native: null,
+    screenshot: { width: 1398, height: 2034 },
+    preview: null,
+    rendersFrom: ["iphone-6.9", "iphone-6.3"],
   },
   "ipad-13": {
     label: "13",
@@ -120,3 +181,45 @@ export const PREVIEW = {
 
 /** Screenshots may not carry an alpha channel. */
 export const SCREENSHOT_PIXEL_FORMAT = "rgb24";
+
+/**
+ * App Store creative assets, shown on iOS 27 / iPadOS 27 and later: the
+ * product page header, the search results asset, and the universal asset
+ * that serves as both. Sizes are the canvases of Apple's templates
+ * (developer.apple.com/app-store/asset-best-practices, the
+ * creative_assets-*_template-static.psd files), read 2026-10-06.
+ */
+export type CreativeKey = "header" | "search-results" | "universal";
+
+export type CreativeSpec = {
+  label: string;
+  width: number;
+  height: number;
+  /**
+   * Centred box that survives every crop the App Store takes from the asset.
+   * The universal asset is cropped to the header's 21:9 and to the search
+   * results' 3:2, so its key content stays inside both: 4425 x 2248 of the
+   * 5244 x 2950 canvas. Absent: the whole canvas is safe.
+   */
+  safe?: { width: number; height: number };
+};
+
+export const CREATIVES: Record<CreativeKey, CreativeSpec> = {
+  header: { label: "Product page header", width: 3840, height: 1646 },
+  "search-results": { label: "Search results", width: 3840, height: 2560 },
+  universal: {
+    label: "Universal",
+    width: 5244,
+    height: 2950,
+    safe: {
+      width: Math.round(2950 * (3840 / 2560)),
+      height: Math.round(5244 / (3840 / 1646)),
+    },
+  },
+};
+
+export const CREATIVE_KEYS = Object.keys(CREATIVES) as CreativeKey[];
+
+export function isCreativeKey(key: string): key is CreativeKey {
+  return key in CREATIVES;
+}

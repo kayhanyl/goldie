@@ -1,6 +1,8 @@
 export type { CaptureManifest } from "./capture.ts";
 export { capture } from "./capture.ts";
 export type {
+  CreativeAsset,
+  CreativesConfig,
   Decoration,
   GoldieConfig,
   PreviewScene,
@@ -9,6 +11,8 @@ export type {
   Theme,
 } from "./config.ts";
 export { loadConfig } from "./config.ts";
+export type { CreativeComposition } from "./creatives.ts";
+export { composeCreative } from "./creatives.ts";
 export { doctor } from "./doctor.ts";
 export type { FrameGeometry } from "./frame.ts";
 export { FRAMES } from "./frame.ts";
@@ -23,7 +27,14 @@ export {
 } from "./layouts.ts";
 export type { LocaleAssets, StoreManifest } from "./manifest.ts";
 export { writeManifest } from "./manifest.ts";
-export { renderPreview, renderScreenshots, verify } from "./render.ts";
+export {
+  renderCreatives,
+  renderPreview,
+  renderScreenshots,
+  verify,
+  verifyCreatives,
+} from "./render.ts";
 export { FlowFailure, repairBrief } from "./repair.ts";
-export type { DeviceKey, DeviceSpec } from "./specs.ts";
-export { DEVICES, PREVIEW } from "./specs.ts";
+export { captureSource } from "./sources.ts";
+export type { CreativeKey, CreativeSpec, DeviceKey, DeviceSpec } from "./specs.ts";
+export { CREATIVE_KEYS, CREATIVES, DEVICES, PREVIEW } from "./specs.ts";

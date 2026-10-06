@@ -351,7 +351,12 @@ export function compose(
   spec: LayoutSpec,
   tileIn: { width: number; height: number },
   theme: { copyHeightRatio: number; deviceWidthRatio: number },
-  opts: { screenOnly?: boolean; geom?: FrameGeometry; copyScale?: number } = {},
+  opts: {
+    screenOnly?: boolean;
+    geom?: FrameGeometry;
+    copyScale?: number;
+    columnDevices?: boolean;
+  } = {},
 ): Composition {
   const geom = opts.geom ?? FRAME;
   const tile =
@@ -410,11 +415,15 @@ export function compose(
   // bottom one — bleeding off the far edge the way dense 9:16 frames do;
   // reference-aspect tiles skip both adjustments. A
   // copy-less layout (minimal) shows the whole device, so real-tile sizing
-  // would push it past the tile's top and bottom; it keeps the reference size.
+  // would push it past the tile's top and bottom; it keeps the reference size,
+  // as every layout does with `columnDevices` (narrow art on a wide tile).
   const squat = tile !== tileIn;
   const devices = spec.devices.map((d) => {
     const widthRatio = isClassic ? theme.deviceWidthRatio : d.widthRatio;
-    const deviceTile = squat && !d.fitBelowCopy && spec.copy.position !== "none" ? tileIn : tile;
+    const deviceTile =
+      squat && !d.fitBelowCopy && spec.copy.position !== "none" && !opts.columnDevices
+        ? tileIn
+        : tile;
     let scale = (deviceTile.width * widthRatio) / art.width;
     let left: number;
     let top: number;

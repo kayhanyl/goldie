@@ -4,6 +4,7 @@ import * as argent from "./argent.ts";
 import { flowPath, type LoadedConfig } from "./config.ts";
 import * as device from "./device.ts";
 import { exec } from "./exec.ts";
+import { captureSource } from "./sources.ts";
 import { DEVICES } from "./specs.ts";
 
 const FFMPEG_INSTALL =
@@ -136,6 +137,16 @@ export async function doctor(cfg: LoadedConfig): Promise<boolean> {
 
   for (const key of cfg.devices) {
     const spec = DEVICES[key];
+    const source = captureSource(cfg, key);
+    if (source !== key) {
+      checks.push({
+        name: `device ${key}`,
+        ok: true,
+        detail: `renders ${source}'s captures (no replay of its own)`,
+        fix: "",
+      });
+      continue;
+    }
     if (spec.platform === "android") {
       // Doctor only reports; capture is what boots an emulator when needed.
       const serial = await device.resolveUdid(key, { autoBoot: false }).catch(() => null);

@@ -22,7 +22,7 @@ import {
   isScreenshot,
   type LoadedConfig,
   type Theme,
-  VARIANT_DEVICE,
+  variantDevices,
   variantFramePath,
 } from "./config.ts";
 import { execOrThrow } from "./exec.ts";
@@ -161,7 +161,9 @@ export async function writeManifest(cfg: LoadedConfig): Promise<string> {
   const frameVariants: StoreManifest["design"]["frameVariants"] = [];
   for (const variant of FRAME_VARIANTS) {
     await copyFile(variantFramePath(variant), join(framesDir, `${variant}.png`));
-    frameVariants.push({ key: variant, device: VARIANT_DEVICE[variant] });
+    // One entry per device the art dresses, so the studio's per-device frame
+    // picker offers the 17 Pro art on every iPhone tile (6.9", 6.3", Duo).
+    for (const device of variantDevices(variant)) frameVariants.push({ key: variant, device });
   }
   const custom = "variant" in cfg.frame ? null : "frames/custom.png";
   if (custom) await copyFile(framePath(cfg), join(webDir, custom));
@@ -285,6 +287,7 @@ export async function writeManifest(cfg: LoadedConfig): Promise<string> {
       platform: DEVICES[key].platform,
       type: DEVICES[key].type,
       copyScale: DEVICES[key].copyScale ?? 1,
+      columnDevices: Boolean(DEVICES[key].columnDevices),
       simulatorName: DEVICES[key].simulatorName ?? null,
       screenshot: DEVICES[key].screenshot,
       preview: DEVICES[key].preview,

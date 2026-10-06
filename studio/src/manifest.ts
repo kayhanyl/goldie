@@ -43,6 +43,8 @@ export type DeviceEntry = {
   type: DeviceType;
   /** Copy size relative to the reference column's type; see DeviceSpec in src/specs.ts. */
   copyScale: number;
+  /** Devices sized from the reference column (narrow art on a wide tile); see DeviceSpec. */
+  columnDevices: boolean;
   simulatorName: string | null;
   screenshot: { width: number; height: number };
   preview: { width: number; height: number } | null;
@@ -146,6 +148,7 @@ export async function loadManifest(): Promise<StoreManifest> {
   // tells iPads apart, and the copy keeps the reference size.
   for (const d of manifest.devices) {
     d.copyScale ??= 1;
+    d.columnDevices ??= false;
     d.type ??= d.platform === "android" ? "android" : d.key.startsWith("ipad") ? "ipad" : "iphone";
   }
 

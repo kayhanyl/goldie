@@ -273,6 +273,9 @@ the next prompt can build on it.
 | A new look: background, text colors, font, sizing | `theme.*`, or `scenes[].background` for one tile | `frame`, `manifest` |
 | A different bezel, or no bezel | `frame.variant` (one variant, or one per device key), `theme.screenOnly` | `frame`, `manifest` |
 | iPad screenshots as well | `devices: ["iphone-6.9", "ipad-13"]`, `frame.variant["ipad-13"]` | `capture --device ipad-13`, `frame`, `preview`, `manifest` |
+| 6.3" iPhone screenshots | `devices` += `"iphone-6.3"`; `captureFrom: { "iphone-6.3": "iphone-6.9" }` to reuse 6.9" captures | `capture --device iphone-6.3` (unless captureFrom), `frame`, `preview`, `manifest` |
+| iPhone Duo screenshots | `devices` += `"iphone-duo"` / `"iphone-duo-outer"` (render the first iPhone's captures) | `frame`, `manifest` |
+| The iOS 27 product page header, search results or universal asset | `creatives.assets.header` / `"search-results"` / `universal` (headline, subhead, 1-3 `scenes`) | `creative`, `verify` |
 | A varied strip: panorama opener, hero, tilted tiles, a breather | `theme.template`: a built-in key or a sequence of layout keys (see `references/config.md`) | `frame`, `manifest` |
 | A different layout for every tile, or one | `theme.layout`, or `scenes[].layout` for one tile | `frame`, `manifest` |
 | Two screens in one tile, or a two-tile panorama | `scenes[].layout: "duo"` / `"panorama-duo"` plus `secondScene`, or `"panorama"` | `frame`, `manifest` |

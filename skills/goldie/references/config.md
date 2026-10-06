@@ -24,9 +24,15 @@ const config: GoldieConfig = {
   // their selectors match. The emulator must already be running.
   // android: { appPath: "/path/to/app-release.apk", applicationId: "com.example.app" },
 
-  // "iphone-6.9" (iPhone 17 Pro Max), "ipad-13" (iPad Pro 13-inch), "pixel-10-pro" (Google Play); keys from $GOLDIE/src/specs.ts.
-  // Every device replays the same flows and gets its own raw captures, output folder and studio view.
+  // "iphone-6.9" (iPhone 17 Pro Max), "iphone-6.3" (iPhone 17 Pro), "iphone-duo" / "iphone-duo-outer"
+  // (iPhone Duo inner / outer display), "ipad-13" (iPad Pro 13-inch), "pixel-10-pro" (Google Play);
+  // keys from $GOLDIE/src/specs.ts. Every device replays the same flows and gets its own raw captures,
+  // output folder and studio view, except the Duo keys: no Duo simulator ships, so they render the
+  // first listed iPhone's captures on the Duo tile.
   devices: ["iphone-6.9", "ipad-13"],
+  // Render a device from another's captures instead of its own simulator, e.g. when flows tap by
+  // coordinates and are recorded on one size (6.3" and 6.9" share an aspect):
+  // captureFrom: { "iphone-6.3": "iphone-6.9" },
   locales: ["en-US"],
   // Capture each locale in its own language (iOS): the flows replay once per locale with the
   // simulator pinned to it, into out/raw/<device>/<locale>/. Off: one capture, in the first locale.
@@ -179,9 +185,15 @@ applies to every tile, `scenes[].decorations` to one; both stack.
 |---|---|---|
 | 6.9" screenshots | 1320x2868 PNG, no alpha | `out/screenshots/iphone-6.9/<locale>/` |
 | 6.9" preview | 886x1920 H.264 30fps AAC, 15 to 30 s | `out/previews/iphone-6.9/<locale>/` |
+| 6.3" screenshots | 1206x2622 PNG, no alpha | `out/screenshots/iphone-6.3/<locale>/` |
+| 6.3" preview | 886x1920 H.264 30fps AAC, 15 to 30 s | `out/previews/iphone-6.3/<locale>/` |
+| Duo screenshots | 2007x2853 (inner), 1398x2034 (outer) PNG, no alpha | `out/screenshots/iphone-duo{,-outer}/<locale>/` |
 | 13" screenshots | 2064x2752 PNG, no alpha | `out/screenshots/ipad-13/<locale>/` |
 | 13" preview | 1200x1600 H.264 30fps AAC, 15 to 30 s | `out/previews/ipad-13/<locale>/` |
 | Play phone screenshots | 1080x1920 PNG, no alpha | `out/screenshots/pixel-10-pro/<locale>/` |
+| iOS 27 header | 3840x1646 PNG, no alpha | `out/creatives/<locale>/header.png` |
+| iOS 27 search results | 3840x2560 PNG, no alpha | `out/creatives/<locale>/search-results.png` |
+| iOS 27 universal | 5244x2950 PNG, no alpha, content in the centred 4425x2248 | `out/creatives/<locale>/universal.png` |
 
 `goldie verify` checks the finished files against these with `sips` and
 `ffprobe` and fails on any mismatch.

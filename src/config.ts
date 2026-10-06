@@ -13,7 +13,16 @@ import {
   TEMPLATE_KEYS,
   type TemplateChoice,
 } from "./layouts.ts";
-import { DEVICE_KEYS, DEVICES, type DeviceKey, isDeviceKey } from "./specs.ts";
+import { captureSource } from "./sources.ts";
+import {
+  CREATIVE_KEYS,
+  type CreativeKey,
+  DEVICE_KEYS,
+  DEVICES,
+  type DeviceKey,
+  isCreativeKey,
+  isDeviceKey,
+} from "./specs.ts";
 
 /** Bezel art bundled in goldie's own assets/, one PNG per variant, each drawn for one device. */
 export const FRAME_VARIANTS = [
@@ -33,9 +42,23 @@ export const VARIANT_DEVICE: Record<FrameVariant, DeviceKey> = {
   "ipad-pro-13-space-gray": "ipad-13",
 };
 
+/**
+ * The device whose bundled bezel art a device wears: every iPhone wears the
+ * 17 Pro art drawn for iphone-6.9 (the 6.3" screen shares its aspect, and the
+ * Duo tiles show the iPhone they render); other devices wear their own.
+ */
+export function artDevice(device: DeviceKey): DeviceKey {
+  return DEVICES[device].type === "iphone" ? "iphone-6.9" : device;
+}
+
+/** Every device a bundled variant can dress: the device it is drawn for and those borrowing its art. */
+export function variantDevices(variant: FrameVariant): DeviceKey[] {
+  return DEVICE_KEYS.filter((d) => artDevice(d) === VARIANT_DEVICE[variant]);
+}
+
 /** The variants drawn for a device, the first one its default. */
 function deviceVariants(device: DeviceKey): FrameVariant[] {
-  return FRAME_VARIANTS.filter((v) => VARIANT_DEVICE[v] === device);
+  return FRAME_VARIANTS.filter((v) => VARIANT_DEVICE[v] === artDevice(device));
 }
 
 export function isFrameVariant(key: string): key is FrameVariant {
@@ -167,6 +190,25 @@ export type StoreListing = {
   description: Record<Locale, string>;
 };
 
+/**
+ * One App Store creative asset (iOS 27): copy beside framed captures of the
+ * listed screenshot scenes on the theme background.
+ */
+export type CreativeAsset = {
+  headline: Record<Locale, string>;
+  subhead?: Record<Locale, string>;
+  /** Screenshot scene ids whose captures it shows, 1 to 3. Default: the first three. */
+  scenes?: string[];
+  /** CSS background; default theme.background. */
+  background?: string;
+};
+
+export type CreativesConfig = {
+  /** Whose captures and bezel the assets show. Default: the first iPhone in `devices`. */
+  device?: DeviceKey;
+  assets: Partial<Record<CreativeKey, CreativeAsset>>;
+};
+
 export type GoldieConfig = {
   /** Absolute path to the app repo. Holds `.argent/flows`; also used for messages and for locating the build. */
   appRoot: string;
@@ -202,6 +244,15 @@ export type GoldieConfig = {
     };
   };
   devices: DeviceKey[];
+  /**
+   * Render a device from another device's raw captures instead of replaying
+   * the flows on its own simulator, e.g. `{ "iphone-6.3": "iphone-6.9" }` when
+   * the flows tap by coordinates and are recorded on one screen size. The
+   * source must be in `devices` and in the device's `rendersFrom`. A device
+   * with no simulator (the iPhone Duo) defaults to its first `rendersFrom`
+   * device in `devices`.
+   */
+  captureFrom?: Partial<Record<DeviceKey, DeviceKey>>;
   locales: Locale[];
   /**
    * Capture each locale in its own language. By default `capture` replays the
@@ -226,6 +277,12 @@ export type GoldieConfig = {
   theme: Theme;
   store: StoreListing;
   scenes: Scene[];
+  /**
+   * App Store creative assets (iOS 27 / iPadOS 27 and later): the product page
+   * header, the search results asset and the universal asset that can serve
+   * as both. Rendered per locale by `goldie creative`.
+   */
+  creatives?: CreativesConfig;
 };
 
 export type LoadedConfig = GoldieConfig & {
@@ -297,7 +354,9 @@ export async function loadConfig(path = defaultConfigPath()): Promise<LoadedConf
   // Fail at load time on a bad variant or missing bezel PNG; android devices
   // never load one from cfg.frame (drawn generic bezel or cfg.android.frame).
   for (const d of loaded.devices) if (DEVICES[d].platform !== "android") framePath(loaded, d);
+  for (const d of loaded.devices) captureSource(loaded, d); // throws on a source nothing captures
   validateLayouts(loaded);
+  validateCreatives(loaded);
   return loaded;
 }
 
@@ -399,7 +458,7 @@ export function applyDesign(cfg: LoadedConfig, design: DesignOverrides): void {
         `Unknown frame variant "${design.frame}". Available: ${FRAME_VARIANTS.join(", ")}`,
       );
     }
-    frames[VARIANT_DEVICE[design.frame]] = design.frame;
+    for (const d of variantDevices(design.frame)) frames[d] = design.frame;
   }
   if (Object.keys(frames).length > 0) {
     cfg.frame = { variant: { ...configVariants(cfg), ...frames } };
@@ -479,6 +538,55 @@ export function validateLayouts(cfg: LoadedConfig): void {
   }
 }
 
+/** The device whose captures and bezel the creative assets show. */
+export function creativeDevice(cfg: Pick<LoadedConfig, "creatives" | "devices">): DeviceKey {
+  const chosen = cfg.creatives?.device;
+  if (chosen) return chosen;
+  const iphone = cfg.devices.find((d) => DEVICES[d].type === "iphone");
+  const ios = iphone ?? cfg.devices.find((d) => DEVICES[d].platform === "ios");
+  if (!ios) throw new Error("creatives: no iOS device in devices to show captures from.");
+  return ios;
+}
+
+/** The screenshot scenes a creative asset shows: its own list, else the first three. */
+export function creativeScenes(cfg: Pick<LoadedConfig, "scenes">, asset: CreativeAsset): string[] {
+  return (
+    asset.scenes ??
+    cfg.scenes
+      .filter(isScreenshot)
+      .slice(0, 3)
+      .map((s) => s.id)
+  );
+}
+
+/** Fails early on an unknown creative key, device or scene, or a missing headline. */
+export function validateCreatives(cfg: LoadedConfig): void {
+  const creatives = cfg.creatives;
+  if (!creatives) return;
+  const device = creativeDevice(cfg);
+  if (!cfg.devices.includes(device) || DEVICES[device].platform !== "ios") {
+    throw new Error(`creatives.device "${device}" must be an iOS device listed in devices.`);
+  }
+  const shots = new Set(cfg.scenes.filter(isScreenshot).map((s) => s.id));
+  for (const [key, asset] of Object.entries(creatives.assets ?? {})) {
+    if (!isCreativeKey(key)) {
+      throw new Error(`Unknown creative "${key}". Available: ${CREATIVE_KEYS.join(", ")}`);
+    }
+    if (!asset) continue;
+    if (!asset.headline?.[cfg.locales[0]!]) {
+      throw new Error(`creatives.assets.${key} needs a headline for ${cfg.locales[0]}.`);
+    }
+    const scenes = creativeScenes(cfg, asset);
+    if (scenes.length < 1 || scenes.length > 3) {
+      throw new Error(`creatives.assets.${key} shows ${scenes.length} scenes; use 1 to 3.`);
+    }
+    for (const id of scenes) {
+      if (!shots.has(id))
+        throw new Error(`creatives.assets.${key}: "${id}" is not a screenshot scene.`);
+    }
+  }
+}
+
 /**
  * The locales a command runs for: all of the config's, or the one --locale
  * asks for. A locale names output and capture directories, so a value outside
@@ -543,7 +651,7 @@ function configVariants(cfg: LoadedConfig): Partial<Record<DeviceKey, FrameVaria
   if (!isFrameVariant(v)) {
     throw new Error(`Unknown frame variant "${v}". Available: ${FRAME_VARIANTS.join(", ")}`);
   }
-  return { [VARIANT_DEVICE[v]]: v };
+  return Object.fromEntries(variantDevices(v).map((d) => [d, v]));
 }
 
 /** The variant a device renders with; null when the config points at custom art. */
@@ -554,7 +662,7 @@ export function frameVariantFor(cfg: LoadedConfig, device: DeviceKey): FrameVari
     if (!isFrameVariant(chosen)) {
       throw new Error(`Unknown frame variant "${chosen}". Available: ${FRAME_VARIANTS.join(", ")}`);
     }
-    if (VARIANT_DEVICE[chosen] !== device) {
+    if (VARIANT_DEVICE[chosen] !== artDevice(device)) {
       throw new Error(
         `Frame variant "${chosen}" is drawn for ${VARIANT_DEVICE[chosen]}, not ${device}.`,
       );

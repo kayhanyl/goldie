@@ -83,6 +83,15 @@ const config: GoldieConfig = {
     description: { "en-US": "Two or three short paragraphs, store voice." },
   },
 
+  // iOS 27 creative assets, rendered by `goldie creative` into out/creatives/<locale>/:
+  // copy on the left, 1-3 framed captures on the right. See README "App Store creative assets".
+  // creatives: {
+  //   assets: {
+  //     header: { headline: { "en-US": "One clear idea" }, scenes: ["home"] },
+  //     "search-results": { headline: { "en-US": "What the app does, at a glance" } },
+  //   },
+  // },
+
   scenes: [
     // One entry per screenshot, in store-page order. The flow navigates to the
     // screen; goldie takes the screenshot after its last step. Flow values are

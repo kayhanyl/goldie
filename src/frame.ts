@@ -48,6 +48,11 @@ export const ANDROID_FRAME = {
 
 export const FRAMES: Record<DeviceKey, FrameGeometry> = {
   "iphone-6.9": IPHONE_FRAME,
+  // Every iPhone wears the 17 Pro art: the 6.3" screen has the 6.9" aspect,
+  // and no Duo bezel is bundled, so the Duo tiles show the iPhone it renders.
+  "iphone-6.3": IPHONE_FRAME,
+  "iphone-duo": IPHONE_FRAME,
+  "iphone-duo-outer": IPHONE_FRAME,
   /** The ipad-pro-13-* variants. */
   "ipad-13": {
     width: 2247,

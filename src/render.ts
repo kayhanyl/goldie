@@ -10,6 +10,9 @@ import {
 } from "@napi-rs/canvas";
 import { type CaptureManifest, capturesPerLocale, rawDirFor } from "./capture.ts";
 import {
+  type CreativeAsset,
+  creativeDevice,
+  creativeScenes,
   type Decoration,
   deviceFrame,
   isPreview,
@@ -17,11 +20,19 @@ import {
   resolvedScenes,
   type Theme,
 } from "./config.ts";
+import { CREATIVE_TYPE, type CreativeComposition, composeCreative } from "./creatives.ts";
 import { execOrThrow } from "./exec.ts";
 import { registerFonts, withGlyphFallback } from "./fonts.ts";
 import { pngInfo } from "./image.ts";
 import { BADGE, type Composition, compose, SCREEN_SHADOW, TYPE } from "./layouts.ts";
-import { DEVICES, type DeviceKey, PREVIEW, SCREENSHOT_PIXEL_FORMAT } from "./specs.ts";
+import {
+  CREATIVES,
+  type CreativeKey,
+  DEVICES,
+  type DeviceKey,
+  PREVIEW,
+  SCREENSHOT_PIXEL_FORMAT,
+} from "./specs.ts";
 
 async function readManifest(
   cfg: LoadedConfig,
@@ -87,7 +98,12 @@ export async function renderScreenshots(cfg: LoadedConfig, deviceKey: DeviceKey,
   const files = await Promise.all(
     jobs.map(async ({ scene, layout, secondScene, first }) => {
       console.log(`  frame ${scene.id}`);
-      const c = compose(layout, tile, cfg.theme, { screenOnly, geom, copyScale: spec.copyScale });
+      const c = compose(layout, tile, cfg.theme, {
+        screenOnly,
+        geom,
+        copyScale: spec.copyScale,
+        columnDevices: spec.columnDevices,
+      });
 
       const canvas = createCanvas(c.width, c.height);
       const ctx = canvas.getContext("2d");
@@ -133,6 +149,113 @@ export async function renderScreenshots(cfg: LoadedConfig, deviceKey: DeviceKey,
     }),
   );
   return files.flat();
+}
+
+/** The creative assets the config defines, in CREATIVES order. */
+function configuredCreatives(cfg: LoadedConfig): Array<[CreativeKey, CreativeAsset]> {
+  const assets = cfg.creatives?.assets ?? {};
+  return (Object.keys(CREATIVES) as CreativeKey[])
+    .filter((key) => assets[key])
+    .map((key) => [key, assets[key]!]);
+}
+
+/**
+ * Renders the iOS 27 creative assets for a locale into out/creatives/<locale>/
+ * (header.png, search-results.png, universal.png): the asset's background,
+ * the copy block on the left, and the captures of its scenes fanned on the
+ * right in the creatives device's bezel. Geometry from composeCreative().
+ */
+export async function renderCreatives(cfg: LoadedConfig, locale: string): Promise<string[]> {
+  const assets = configuredCreatives(cfg);
+  if (assets.length === 0) return [];
+  const deviceKey = creativeDevice(cfg);
+  const manifest = await readManifest(cfg, deviceKey, locale);
+  const { image, geom } = deviceFrame(cfg, deviceKey);
+  const screenOnly = Boolean(cfg.theme.screenOnly || DEVICES[deviceKey].screenOnly);
+  const bezel = screenOnly ? null : await loadImage(image);
+  registerFonts(cfg.theme.fontFiles);
+
+  const outDir = join(cfg.outDir, "creatives", locale);
+  await mkdir(outDir, { recursive: true });
+  for (const name of await readdir(outDir)) {
+    if (name.endsWith(".png")) await rm(join(outDir, name), { force: true });
+  }
+
+  const files: string[] = [];
+  for (const [key, asset] of assets) {
+    console.log(`  creative ${key}`);
+    const scenes = creativeScenes(cfg, asset);
+    const c = composeCreative(key, scenes.length, { geom, screenOnly });
+    const canvas = createCanvas(c.width, c.height);
+    const ctx = canvas.getContext("2d");
+    const background = asset.background ?? cfg.theme.background;
+    const transparent = isTransparent(background);
+    if (!transparent) {
+      ctx.fillStyle = paint(ctx, background, c.width, c.height);
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    drawCreativeCopy(ctx, c.copy, cfg.theme, {
+      headline: pick(asset.headline, locale, `creatives.${key}`, "headline"),
+      subhead: asset.subhead
+        ? pick(asset.subhead, locale, `creatives.${key}`, "subhead")
+        : undefined,
+    });
+    for (const device of c.devices) {
+      const sceneId = scenes[device.index]!;
+      const shot = manifest.screenshots.find((s) => s.sceneId === sceneId);
+      if (!shot) {
+        throw new Error(
+          `Scene "${sceneId}" is in creatives.${key} but not in the capture manifest.`,
+        );
+      }
+      // drawDevice sizes the bare-screen shadow from a tile width; a device
+      // spans ~0.84 of a screenshot tile, so derive the equivalent tile.
+      drawDevice(ctx, { ...device, capture: "primary" }, await loadImage(shot.file), bezel, {
+        width: device.frame.width / 0.84,
+      });
+    }
+    files.push(await writePng(canvas, outDir, `${key}.png`, transparent));
+  }
+  return files;
+}
+
+/** The creative copy block: headline and subhead, left aligned, centred vertically in the copy column. */
+function drawCreativeCopy(
+  ctx: SKRSContext2D,
+  copy: CreativeComposition["copy"],
+  theme: Theme,
+  text: { headline: string; subhead?: string },
+) {
+  const family = withGlyphFallback(theme.fontFamily);
+  const blocks = [
+    {
+      text: text.headline,
+      font: `${CREATIVE_TYPE.headlineWeight} ${copy.headlineSize}px ${family}`,
+      color: theme.headlineColor,
+      lineHeight: CREATIVE_TYPE.headlineLineHeight,
+      letterSpacing: copy.headlineSize * CREATIVE_TYPE.headlineTracking,
+    },
+    ...(text.subhead
+      ? [
+          {
+            text: text.subhead,
+            font: `${CREATIVE_TYPE.subheadWeight} ${copy.subheadSize}px ${family}`,
+            color: theme.subheadColor,
+            lineHeight: CREATIVE_TYPE.subheadLineHeight,
+            letterSpacing: 0,
+          },
+        ]
+      : []),
+  ].map((b) => ({ ...b, lines: wrapLines(ctx, b.text, b.font, b.letterSpacing, copy.box.width) }));
+  const gap = copy.headlineSize * CREATIVE_TYPE.gap;
+  const total =
+    blocks.reduce((sum, b) => sum + b.lines.length * fontSize(b.font) * b.lineHeight, 0) +
+    gap * (blocks.length - 1);
+  let y = copy.box.top + (copy.box.height - total) / 2;
+  for (const b of blocks) {
+    y = drawLines(ctx, { ...b, x: copy.box.left, y, align: "left" });
+    y += gap;
+  }
 }
 
 /**
@@ -646,6 +769,35 @@ export async function verify(
     }
   }
 
+  return ok;
+}
+
+/** Checks the rendered creative assets of a locale: present, Apple's canvas size, no alpha. */
+export async function verifyCreatives(cfg: LoadedConfig, locale: string): Promise<boolean> {
+  let ok = true;
+  const dir = join(cfg.outDir, "creatives", locale);
+  for (const [key, asset] of configuredCreatives(cfg)) {
+    const spec = CREATIVES[key];
+    const file = join(dir, `${key}.png`);
+    const exists = await stat(file).then(
+      () => true,
+      () => false,
+    );
+    if (!exists) {
+      ok = false;
+      console.log(`  FAIL ${locale}/${key}.png  missing (run: goldie creative)`);
+      continue;
+    }
+    const { width, height, hasAlpha: alpha } = await pngInfo(file);
+    const alphaOk = !alpha || isTransparent(asset.background ?? cfg.theme.background);
+    const good = width === spec.width && height === spec.height && alphaOk;
+    ok &&= good;
+    console.log(
+      `  ${good ? "ok  " : "FAIL"} ${locale}/${key}.png  ${width}x${height}` +
+        `${alpha ? (alphaOk ? "  transparent (not for upload)" : "  alpha channel present") : ""}` +
+        `${good ? "" : `  expected ${spec.width}x${spec.height}, no alpha`}`,
+    );
+  }
   return ok;
 }
 

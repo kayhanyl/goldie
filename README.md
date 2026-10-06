@@ -57,7 +57,8 @@ argent flows in `.argent/flows`. Then run:
 
 ```
 goldie doctor     Check tools, simulators and flows
-goldie all        Capture, frame, render the preview and verify
+goldie all        Capture, frame, render the preview and creatives, and verify
+goldie creative   Render the iOS 27 creative assets (header, search results, universal)
 goldie studio     Preview and tweak the assets in the browser
 ```
 
@@ -68,6 +69,19 @@ A preview must run 15 to 30 seconds. Add `"ipad-13"` to `devices` for
 13" iPad screenshots (2064 x 2752) and a 1200 x 1600 preview from the same
 flows, each device with its own bezels, captures and output folder.
 
+More iPhone sizes:
+
+- `"iphone-6.3"`: 1206 x 2622 screenshots and an 886 x 1920 preview from the
+  iPhone 17 Pro simulator. App Store Connect only asks for it when no 6.9"
+  set is uploaded; a native set beats the downscale. The 6.3" screen has the
+  6.9" aspect, so `captureFrom: { "iphone-6.3": "iphone-6.9" }` renders it
+  from the 6.9" captures when the flows tap by coordinates and are recorded
+  on one size.
+- `"iphone-duo"` (inner display, 2007 x 2853) and `"iphone-duo-outer"` (outer
+  display, 1398 x 2034): no Duo simulator ships, so these render the captures
+  of the first listed iPhone in the iPhone bezel on the Duo tile, sized like
+  the 6.9" tile. No preview, since Apple publishes no Duo preview size yet.
+
 Every locale renders from one capture run in the first locale, which suits
 apps whose screens look the same in every language. Set
 `localizedCaptures: true` to capture each locale in its own language instead:
@@ -75,6 +89,40 @@ apps whose screens look the same in every language. Set
 into `out/raw/<device>/<locale>/`, and each locale's screenshots, preview and
 studio view use its own captures. It applies to iOS devices; Android emulators
 keep one shared capture.
+
+## App Store creative assets (iOS 27)
+
+On iOS 27 and iPadOS 27 the App Store shows a product page header and a
+search results asset above the screenshots, or one universal asset in both
+places ([Apple's guidance](https://developer.apple.com/app-store/asset-best-practices/)).
+Add a `creatives` block and `goldie creative` (also part of `goldie all`)
+renders them per locale into `out/creatives/<locale>/`, at the canvas sizes of
+Apple's templates: the copy on the left, one to three framed captures fanned
+on the right, on the theme background.
+
+| Asset | Size | Notes |
+|---|---|---|
+| `header` | 3840 x 1646 | Product page header |
+| `search-results` | 3840 x 2560 | Search results; without it, events, previews and screenshots show |
+| `universal` | 5244 x 2950 | Serves as both: the App Store crops it to 21:9 and 3:2, so goldie keeps everything in the centred 4425 x 2248 box that survives both crops |
+
+```ts
+creatives: {
+  // device: "iphone-6.9",   whose captures and bezel to show (default: the first iPhone)
+  assets: {
+    header: {
+      headline: { "en-US": "One clear idea" },
+      subhead: { "en-US": "For someone who has never seen the app." },
+      scenes: ["home", "detail", "share"], // 1 to 3 screenshot scenes; default: the first three
+    },
+    "search-results": { headline: { "en-US": "What the app does, at a glance" }, scenes: ["home"] },
+    // universal: { headline: { "en-US": "..." } },
+  },
+},
+```
+
+These assets must be suitable for a 4+ rating whatever the app's own rating.
+Apple also takes video for them; goldie renders images for now.
 
 ## Google Play
 

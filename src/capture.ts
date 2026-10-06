@@ -11,7 +11,10 @@ import {
 import * as device from "./device.ts";
 import { imageSize } from "./image.ts";
 import { FlowFailure } from "./repair.ts";
+import { captureSource, type SourceConfig } from "./sources.ts";
 import { DEVICES, type DeviceKey } from "./specs.ts";
+
+export { captureSource, capturesItself } from "./sources.ts";
 
 /**
  * A cold start after a reinstall can outrun argent's native-devtools handshake
@@ -28,25 +31,28 @@ async function runFlow(path: string, udid: string) {
 /**
  * Whether a device captures every locale separately: `localizedCaptures` is
  * on and the device's locale can be pinned (iOS simulators; android emulators
- * are not locale-pinned, see device.prepare).
+ * are not locale-pinned, see device.prepare). A device rendering another
+ * device's captures follows its source.
  */
 export function capturesPerLocale(
-  cfg: Pick<LoadedConfig, "localizedCaptures">,
+  cfg: Pick<LoadedConfig, "localizedCaptures"> & SourceConfig,
   deviceKey: DeviceKey,
 ): boolean {
-  return Boolean(cfg.localizedCaptures) && DEVICES[deviceKey].platform === "ios";
+  const source = captureSource(cfg, deviceKey);
+  return Boolean(cfg.localizedCaptures) && DEVICES[source].platform === "ios";
 }
 
 /**
- * The raw captures a device renders a locale from: out/raw/<device>/<locale>/
- * when the device captures per locale, else the one shared out/raw/<device>/.
+ * The raw captures a device renders a locale from: out/raw/<source>/<locale>/
+ * when the source captures per locale, else the one shared out/raw/<source>/,
+ * where <source> is the device itself or the one it renders (captureSource).
  */
 export function rawDirFor(
-  cfg: Pick<LoadedConfig, "localizedCaptures" | "outDir">,
+  cfg: Pick<LoadedConfig, "localizedCaptures" | "outDir"> & SourceConfig,
   deviceKey: DeviceKey,
   locale: string,
 ): string {
-  const shared = join(cfg.outDir, "raw", deviceKey);
+  const shared = join(cfg.outDir, "raw", captureSource(cfg, deviceKey));
   return capturesPerLocale(cfg, deviceKey) ? join(shared, locale) : shared;
 }
 
@@ -81,6 +87,12 @@ export async function capture(
   locale: string = cfg.locales[0]!,
 ): Promise<CaptureManifest> {
   const spec = DEVICES[deviceKey];
+  const source = captureSource(cfg, deviceKey);
+  if (source !== deviceKey) {
+    throw new Error(
+      `${deviceKey} renders ${source}'s captures. Run: goldie capture --device ${source}`,
+    );
+  }
   const udid = await device.resolveUdid(deviceKey);
   const rawDir = rawDirFor(cfg, deviceKey, locale);
   await mkdir(rawDir, { recursive: true });
