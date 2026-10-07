@@ -51,6 +51,11 @@ export const FONTS = {
     fallback: '"PingFang SC", "Microsoft YaHei", sans-serif',
     files: { 400: "NotoSansSC-400.otf", 700: "NotoSansSC-700.otf" },
   },
+  "noto-sans-kr": {
+    family: "Noto Sans KR",
+    fallback: '"Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    files: { 400: "NotoSansKR-400.otf", 700: "NotoSansKR-700.otf" },
+  },
   "noto-sans-arabic": {
     family: "Noto Sans Arabic",
     fallback: '"Geeza Pro", "Segoe UI", sans-serif',
@@ -108,7 +113,8 @@ export function withGlyphFallback(stack: string): string {
  * per-glyph last resort. Skia falls through per glyph, so latin text keeps the
  * chosen face and only characters the stack cannot draw reach these.
  */
-const GLYPH_FALLBACKS = ["noto-sans-sc", "noto-sans-arabic"] as const;
+// Noto Sans SC covers Chinese and Japanese but not Hangul, so Korean needs its own.
+const GLYPH_FALLBACKS = ["noto-sans-sc", "noto-sans-kr", "noto-sans-arabic"] as const;
 
 /**
  * A typeface the config supplies itself (`theme.fontFiles`), rather than one of

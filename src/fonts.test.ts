@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { FONTS, fontFilePath, fontStack, registerFonts, withGlyphFallback } from "./fonts.ts";
 
 describe("withGlyphFallback", () => {
-  test("appends both bundled fallbacks so unknown glyphs have somewhere to fall", () => {
+  test("appends every bundled fallback so unknown glyphs have somewhere to fall", () => {
     const sc = FONTS["noto-sans-sc"].family;
+    const kr = FONTS["noto-sans-kr"].family;
     const arabic = FONTS["noto-sans-arabic"].family;
-    expect(withGlyphFallback("Lato")).toBe(`Lato, "${sc}", "${arabic}"`);
+    expect(withGlyphFallback("Lato")).toBe(`Lato, "${sc}", "${kr}", "${arabic}"`);
   });
 
   test("does not append a face twice", () => {
