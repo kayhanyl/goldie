@@ -225,6 +225,10 @@ async function captureSegments(
         stopped = await argent.run<{ video: string; durationMs: number }>("screen-recording-stop", {
           udid,
         });
+      } catch (err) {
+        // A flow that errored out can take the recording down with it; the
+        // flow failure is the actionable report, so it wins over the stop's.
+        if (!failure) throw err;
       } finally {
         await releaseStatusBar();
       }
